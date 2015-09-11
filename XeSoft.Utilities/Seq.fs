@@ -35,7 +35,7 @@ module Seq =
     /// NOTE: does not work on infinite sequences as the sequence is enumerated
     let shuffleCrypto s =
         let rngCsp = new RNGCryptoServiceProvider ()
-        let rng = new RandomBuffer(rngCsp.GetBytes, Seq.length s)
+        let rng = new RandomBuffer(rngCsp.GetBytes, (Seq.length s) - 1) // length - 1 iterations
         let getInt max =
             rng.GetRandomRatio ()
             |> Ratio.scaleBetween 0 max
