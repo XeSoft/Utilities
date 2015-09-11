@@ -23,6 +23,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>bin\Debug\XeSoft.Utilities.XML</DocumentationFile>
+    <NoWarn>0864</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -44,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="CircularDictionary.fs" />
     <Compile Include="Ratio.fs" />
     <Compile Include="RandomBuffer.fs" />
     <Compile Include="Array.fs" />
