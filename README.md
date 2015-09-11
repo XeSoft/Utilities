@@ -1,6 +1,11 @@
 # Utilities
 General utility functions in F#.
 
+### CircularDictionary
+
+This is a combination of a dictionary and a circular buffer. Created with an initial capacity.
+When the capacity is reached, subsequent additions to the dictionary overwrite the oldest entry.
+
 ### Shuffling
 
 One of the higher-level capabilities of this library is to provide several ways to shuffle a sequence.
