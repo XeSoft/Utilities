@@ -1,8 +1,6 @@
 ﻿namespace XeSoft.Utilities
 
 module Seq =
-    open System.Security.Cryptography
-    open System
 
     /// Shuffle a sequence with a given RNG.
     /// Uses the provided random number generator and the Durstenfeld shuffle algorithm.
@@ -25,17 +23,18 @@ module Seq =
     /// Returns a new sequence which is shuffled.
     /// NOTE: does not work on infinite sequences as the sequence is enumerated
     let shuffleSeeded seed s =
-        let rngSeeded = new Random(seed)
-        let getInt max = rngSeeded.Next(max + 1) // because it's exclusive max, shuffle expects inclusive
+        let rngSeeded = new System.Random (seed)
+        let getInt max = rngSeeded.Next (max + 1) // because it's exclusive max, shuffle expects inclusive
         s |> shuffle getInt
 
-    /// Shuffle a sequence.
+    /// Shuffle a sequence with a cryptographic RNG.
     /// Uses a cryptographic random number generator and the Durstenfeld shuffle algorithm.
-    /// Returns a new sequence which is shuffled in random order.
+    /// s is the sequence to be shuffled.
+    /// Returns a new sequence which is shuffled.
     /// NOTE: does not work on infinite sequences as the sequence is enumerated
     let shuffleCrypto s =
-        let rngCsp = new RNGCryptoServiceProvider ()
-        let rng = new RandomBuffer(rngCsp.GetBytes, (Seq.length s) - 1) // length - 1 iterations
+        let rngCsp = new System.Security.Cryptography.RNGCryptoServiceProvider ()
+        let rng = new RandomBuffer (rngCsp.GetBytes, (Seq.length s) - 1) // length - 1 iterations
         let getInt max =
             rng.GetRandomRatio ()
             |> Ratio.scaleBetween 0 max
