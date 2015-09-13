@@ -11,7 +11,7 @@ type CircularDictionaryTests () =
 
     [<TestMethod>]
     member __.``Circular Dictionary default indexer works`` () = 
-        let cd = new CircularDictionary<Guid, string>(3)
+        let cd = CircularDictionary.create<Guid, string>(3)
         for i in 0 .. 2 do
             let (key, value) = testGuids.[i]
             cd.Add(key, value)
@@ -19,7 +19,7 @@ type CircularDictionaryTests () =
 
     [<TestMethod>]
     member __.``Circular Dictionary Count works`` () = 
-        let cd = new CircularDictionary<Guid, string>(3)
+        let cd = CircularDictionary.create<Guid, string>(3)
         Assert.AreEqual(0, cd.Count)
         for i in 0 .. 2 do
             let (key, value) = testGuids.[i]
@@ -28,7 +28,7 @@ type CircularDictionaryTests () =
 
     [<TestMethod>]
     member __.``Circular Dictionary ContainsKey works`` () = 
-        let cd = new CircularDictionary<Guid, string>(3)
+        let cd = CircularDictionary.create<Guid, string>(3)
         for i in 0 .. 2 do
             let (key, value) = testGuids.[i]
             Assert.AreEqual(false, cd.ContainsKey(key))
@@ -37,7 +37,7 @@ type CircularDictionaryTests () =
 
     [<TestMethod>]
     member __.``Circular Dictionary Keys works`` () = 
-        let cd = new CircularDictionary<Guid, string>(3)
+        let cd = CircularDictionary.create<Guid, string>(3)
         for i in 0 .. 2 do
             let (key, value) = testGuids.[i]
             cd.Add(key, value)
@@ -45,7 +45,7 @@ type CircularDictionaryTests () =
 
     [<TestMethod>]
     member __.``Circular Dictionary Values works`` () = 
-        let cd = new CircularDictionary<Guid, string>(3)
+        let cd = CircularDictionary.create<Guid, string>(3)
         for i in 0 .. 2 do
             let (key, value) = testGuids.[i]
             cd.Add(key, value)
@@ -53,7 +53,7 @@ type CircularDictionaryTests () =
 
     [<TestMethod>]
     member __.``Circular Dictionary observes capacity limit and overwrites oldest values`` () = 
-        let cd = new CircularDictionary<Guid, string>(3)
+        let cd = CircularDictionary.create<Guid, string>(3)
         Assert.AreEqual(0, cd.Count)
         cd.Add(fst testGuids.[0], snd testGuids.[0])
         Assert.IsTrue(cd.ContainsKey(fst testGuids.[0]))

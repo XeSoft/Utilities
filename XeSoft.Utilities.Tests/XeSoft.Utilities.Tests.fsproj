@@ -46,6 +46,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="CircularDictionaryTests.fs" />
+    <Compile Include="CircularMapTests.fs" />
     <Compile Include="RatioTests.fs" />
     <Compile Include="RandomBufferTests.fs" />
     <Compile Include="ArrayTests.fs" />
