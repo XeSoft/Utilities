@@ -31,10 +31,8 @@ type CircularMap<'key, 'value when 'key : comparison and 'value : equality> =
         * (31 + m.Next.GetHashCode ())
     override m.ToString () = m.Hash.ToString ()
 
-    static member private toD m =
-        m :> IDictionary<'key, 'value>
-    static member private toC m =
-        m :> ICollection<KeyValuePair<'key, 'value>>
+    static member private toD m = m :> IDictionary<'key, 'value>
+    static member private toC m = m :> ICollection<KeyValuePair<'key, 'value>>
 
     // for compatibility with looping, LINQ extension methods, etc.
     // ------------------------------------------------------------
