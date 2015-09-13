@@ -6,6 +6,11 @@ General utility functions in F#.
 This is a combination of a dictionary and a circular buffer. Created with an initial capacity.
 When the capacity is reached, subsequent additions to the dictionary overwrite the oldest entry.
 
+### CircularMap
+
+This is a combination of a map and a circular buffer. Created with an initial capacity.
+When the capacity is reached, subsequent additions cause the oldest map entry to be removed.
+
 ### Shuffling
 
 One of the higher-level capabilities of this library is to provide several ways to shuffle a sequence.
