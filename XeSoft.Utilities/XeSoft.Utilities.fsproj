@@ -46,12 +46,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="Agent.fs" />
+    <Compile Include="AgentDistributor.fs" />
     <Compile Include="CircularDictionary.fs" />
     <Compile Include="CircularMap.fs" />
     <Compile Include="Ratio.fs" />
     <Compile Include="RandomBuffer.fs" />
     <Compile Include="Array.fs" />
     <Compile Include="Seq.fs" />
+    <Compile Include="Async.fs" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

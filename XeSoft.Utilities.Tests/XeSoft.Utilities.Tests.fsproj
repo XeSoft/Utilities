@@ -51,6 +51,8 @@
     <Compile Include="RandomBufferTests.fs" />
     <Compile Include="ArrayTests.fs" />
     <Compile Include="SeqTests.fs" />
+    <Compile Include="AgentTests.fs" />
+    <Compile Include="AgentDistributorTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\XeSoft.Utilities\XeSoft.Utilities.fsproj">
