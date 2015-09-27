@@ -63,4 +63,4 @@ module Agent =
         // must post the stop message to trigger the cancel check in case queue is empty
 
     let messageCount (a:Agent<'message, 'result>) =
-        lock a.Mailbox (fun () -> a.Mailbox.CurrentQueueLength)
+        a.Mailbox.CurrentQueueLength

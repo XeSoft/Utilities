@@ -5,6 +5,7 @@ open System.Threading
 type private DistributorOp<'key, 'message, 'result when 'key : comparison> =
 | Distribute of 'key * 'message * reply:('result -> unit)
 | CompleteRun of 'key
+| GetAgentCount of reply:(int -> unit)
 | Shutdown of signalComplete:(unit -> unit)
 
 type private AgentCounter<'message, 'result> = {
@@ -13,6 +14,7 @@ type private AgentCounter<'message, 'result> = {
 }
 
 type private DistributorResult<'result> =
+| QueryAnswered
 | MessageDistributed
 | DistributionFailed
 | AgentStatsUpdated
@@ -20,7 +22,6 @@ type private DistributorResult<'result> =
 
 type AgentDistributor<'key, 'message, 'result when 'key : comparison> =
     private {
-        AgentsByKey: System.Collections.Generic.Dictionary<'key, AgentCounter<'message,'result>>;
         Canceller: CancellationTokenSource;
         Mailbox: MailboxProcessor<DistributorOp<'key, 'message, Async<'result>>>;
         HashFn: 'message -> 'key;
@@ -67,6 +68,7 @@ module AgentDistributor =
                 |> Async.Ignore
                 |> Async.RunSynchronously
                 signalComplete ()
+                canceller.Cancel () // call cancel to signal stopped
                 ShutdownCompleted
             | Distribute (key, message, reply) ->
                 try
@@ -83,6 +85,14 @@ module AgentDistributor =
             | CompleteRun key ->
                 oneFinished key
                 AgentStatsUpdated
+            | GetAgentCount reply ->
+                reply agentsByKey.Count
+                QueryAnswered
+
+        let stopAllAgentsNow () =
+            agentsByKey.Values
+            |> Array.ofSeq
+            |> Array.iter (fun agentCounter -> Agent.stopNow agentCounter.Agent)
 
         let mailbox =
             startAgent
@@ -90,9 +100,11 @@ module AgentDistributor =
                 <| fun inbox -> // agent boilerplate
                     let rec loop () =
                         async {
+                            use! holder = Async.OnCancel stopAllAgentsNow
                             let! op = inbox.Receive ()
                             match runTurn op with
                             | ShutdownCompleted -> return () // exit
+                            | QueryAnswered
                             | MessageDistributed
                             | DistributionFailed
                             | AgentStatsUpdated -> return! loop () // continue
@@ -100,7 +112,6 @@ module AgentDistributor =
                     loop () // start the message processing loop
 
         {
-            AgentsByKey = agentsByKey;
             Canceller = canceller;
             Mailbox = mailbox;
             HashFn = hashFn;
@@ -120,17 +131,15 @@ module AgentDistributor =
         d.Mailbox.PostAndAsyncReply (fun channel -> Shutdown channel.Reply)
 
     let stopNow (d:AgentDistributor<'key, 'message, 'result>) =
-        d.AgentsByKey.Values
-        |> Seq.iter (fun agentCounter -> Agent.stopNow agentCounter.Agent)
         d.Canceller.Cancel ()
         d.Mailbox.Post (Shutdown ignore)
-        // must post the stop message to trigger the cancel check in case queue is empty
+        // must post message to trigger the cancel check in case queue is empty
 
     let agentCount (d:AgentDistributor<'key, 'message, 'result>) =
-        d.AgentsByKey.Count
+        if d.Canceller.IsCancellationRequested then 0
+        else
+            d.Mailbox.PostAndAsyncReply (fun channel -> GetAgentCount channel.Reply)
+            |> Async.RunSynchronously
 
     let messageCount (d:AgentDistributor<'key, 'message, 'result>) =
-        d.AgentsByKey.Values
-        |> Seq.map (fun x -> x.MessageCount)
-        |> Seq.sum
-        |> fun s -> s + d.Mailbox.CurrentQueueLength
+        d.Mailbox.CurrentQueueLength

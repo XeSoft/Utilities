@@ -40,7 +40,6 @@ type AgentDistributorTests () =
         let messageCount = AgentDistributor.messageCount dist
         printfn "Distributor message queue count %i" messageCount
         Assert.IsTrue(1 <= messageCount && messageCount <= max)
-        Async.Sleep 10 |> Async.RunSynchronously // give agents a chance to start processing
         let agentCount = AgentDistributor.agentCount dist
         printfn "Distributor agent count %i" agentCount
         Assert.AreEqual(agentsMax, agentCount)
@@ -48,6 +47,6 @@ type AgentDistributorTests () =
         |> Async.Parallel
         |> Async.RunSynchronously
         |> Array.iteri (fun i x -> Assert.AreEqual(Some i, x))
-        Async.Sleep 10 |> Async.RunSynchronously // give counters a chance to update
+        AgentDistributor.stop dist |> Async.RunSynchronously
         Assert.AreEqual(0, AgentDistributor.messageCount dist)
         Assert.AreEqual(0, AgentDistributor.agentCount dist)
