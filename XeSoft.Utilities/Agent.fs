@@ -18,6 +18,9 @@ type Agent<'message, 'result> =
 
 module Agent =
 
+    /// Create an agent to process messages with the provided function.
+    /// The processFn is performed on each submitted message in order.
+    /// The failFn is called when the processFn throws an exception.
     let create (processFn:'message -> Async<'result>) (failFn:exn -> 'result) =
 
         let startAgent t f = MailboxProcessor.Start (f, cancellationToken = t)
@@ -51,16 +54,23 @@ module Agent =
 
         { Mailbox = mailbox; Canceller = canceller;}
 
+    /// Submit a message for the agent to process.
+    /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (a:Agent<'message,'result>) =
         a.Mailbox.PostAndAsyncReply (fun channel -> Process (m, channel.Reply))
 
+    /// Stop an agent after all remaining messages have been processed.
+    /// Returns an async that will complete when all remaining messages have been processed.
     let stop (a:Agent<'message, 'result>) =
         a.Mailbox.PostAndAsyncReply (fun channel -> Stop channel.Reply)
 
+    /// Stop an agent immediately.
+    /// Any messages remaining in queue will not be processed.
     let stopNow (a:Agent<'message, 'result>) =
         a.Canceller.Cancel ()
         a.Mailbox.Post (Stop ignore)
         // must post the stop message to trigger the cancel check in case queue is empty
 
+    /// Get the count of messages waiting in queue on the agent.
     let messageCount (a:Agent<'message, 'result>) =
         a.Mailbox.CurrentQueueLength

@@ -1,6 +1,21 @@
 # Utilities
 General utility functions in F#.
 
+### Agents
+
+Based on the MailboxProcessor, these components were created to ease the boilerplate 
+in creating agents to process chunks of work.
+
+##### Agent
+
+Functions to create, send messages to, and stop a mailbox processor.
+
+##### AgentDistributor
+
+Itself an agent, it takes submitted messages and distributes them off to other agents 
+based on the provided hashing function. Agents are commissioned as needed (per hash value) 
+and decommissioned when idle.
+
 ### CircularDictionary
 
 This is a combination of a dictionary and a circular buffer. Created with an initial capacity.
@@ -14,7 +29,7 @@ When the capacity is reached, subsequent additions cause the oldest map entry to
 ### Shuffling
 
 One of the higher-level capabilities of this library is to provide several ways to shuffle a sequence.
-Several of the other utilities primarily exist to support shuffling.
+Some of the other utilities primarily exist to support shuffling.
 
 ##### Seq.shuffle
 

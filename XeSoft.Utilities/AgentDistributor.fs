@@ -29,6 +29,12 @@ type AgentDistributor<'key, 'message, 'result when 'key : comparison> =
 
 module AgentDistributor =
     
+    /// Create an agent distributor to process messages.
+    /// Messages are first run through the hashFn to decide which agent will process them.
+    /// Each message to the same agent (hash value) will be processed in order.
+    /// processFn will be run on each submitted message in order.
+    /// failFn will be called if processFn thrown an exception.
+    /// hashFn will be used do decide which agent should process the message.
     let create (processFn:'message -> Async<'result>) (failFn: exn -> 'result) (hashFn: 'message -> 'key) =
 
         let startAgent t f = MailboxProcessor.Start (f, cancellationToken = t)
@@ -117,6 +123,8 @@ module AgentDistributor =
             HashFn = hashFn;
         }
 
+    /// Submit a message to a distributor for processing.
+    /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (d:AgentDistributor<'key, 'message, 'result>) =
         let key = d.HashFn m
         let distributionResultAsync = d.Mailbox.PostAndAsyncReply (fun channel -> Distribute (key, m, channel.Reply))
@@ -127,19 +135,26 @@ module AgentDistributor =
             return runResult // return result to caller
         }
 
+    /// Stop a distributor after all remaining messages have been processed.
+    /// Returns an async that will complete when all remaining messages have been processed.
     let stop (d:AgentDistributor<'key, 'message, 'result>) =
         d.Mailbox.PostAndAsyncReply (fun channel -> Shutdown channel.Reply)
 
+    /// Stop a distributor immediately.
+    /// Any messages remaining in queue will not be processed.
     let stopNow (d:AgentDistributor<'key, 'message, 'result>) =
         d.Canceller.Cancel ()
         d.Mailbox.Post (Shutdown ignore)
         // must post message to trigger the cancel check in case queue is empty
 
+    /// Get the count of agents that the distributor currently has running.
     let agentCount (d:AgentDistributor<'key, 'message, 'result>) =
         if d.Canceller.IsCancellationRequested then 0
         else
             d.Mailbox.PostAndAsyncReply (fun channel -> GetAgentCount channel.Reply)
             |> Async.RunSynchronously
 
+    /// Returns the count of queued messages in the distributor.
+    /// It does not include the count of messages distributed to agents.
     let messageCount (d:AgentDistributor<'key, 'message, 'result>) =
         d.Mailbox.CurrentQueueLength
