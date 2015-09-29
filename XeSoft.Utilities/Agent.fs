@@ -54,7 +54,7 @@ module Agent =
 
         { Mailbox = mailbox; Canceller = canceller;}
 
-    /// Submit a message for the agent to process.
+    /// Submit a message for an agent to process.
     /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (a:Agent<'message,'result>) =
         a.Mailbox.PostAndAsyncReply (fun channel -> Process (m, channel.Reply))
@@ -74,3 +74,15 @@ module Agent =
     /// Get the count of messages waiting in queue on the agent.
     let messageCount (a:Agent<'message, 'result>) =
         a.Mailbox.CurrentQueueLength
+
+// convenience methods
+type Agent<'message, 'result> with
+    /// Submit a message for processing.
+    /// Returns an async that will complete with the result when the message is processed.
+    member me.Send m = Agent.send m me
+    /// Stop the agent after all remaining messages have been processed.
+    /// Returns an async that will complete when all remaining messages have been processed.
+    member me.Stop () = Agent.stop me
+    /// Stop the agent immediately.
+    /// Any messages remaining in queue will not be processed.
+    member me.StopNow () = Agent.stopNow me

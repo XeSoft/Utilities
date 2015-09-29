@@ -2,7 +2,7 @@
 
 open System.Threading
 
-type private DistributorOp<'key, 'message, 'result when 'key : comparison> =
+type private DistributorOp<'key, 'message, 'result when 'key : equality> =
 | Distribute of 'key * 'message * reply:('result -> unit)
 | CompleteRun of 'key
 | GetAgentCount of reply:(int -> unit)
@@ -20,7 +20,7 @@ type private DistributorResult<'result> =
 | AgentStatsUpdated
 | ShutdownCompleted
 
-type AgentDistributor<'key, 'message, 'result when 'key : comparison> =
+type AgentDistributor<'key, 'message, 'result when 'key : equality> =
     private {
         Canceller: CancellationTokenSource;
         Mailbox: MailboxProcessor<DistributorOp<'key, 'message, Async<'result>>>;
@@ -158,3 +158,16 @@ module AgentDistributor =
     /// It does not include the count of messages distributed to agents.
     let messageCount (d:AgentDistributor<'key, 'message, 'result>) =
         d.Mailbox.CurrentQueueLength
+
+// convenience methods
+type AgentDistributor<'key, 'message, 'result when 'key : equality> with
+    /// Submit a message for processing.
+    /// Returns an async that will complete with the result when the message is processed.
+    member me.Send m = AgentDistributor.send m me
+    /// Stop the distributor after all remaining messages have been processed.
+    /// Returns an async that will complete when all remaining messages have been processed.
+    member me.Stop () = AgentDistributor.stop me
+    /// Stop the distributor immediately.
+    /// Any messages remaining in queue will not be processed.
+    member me.StopNow () = AgentDistributor.stopNow me
+    
