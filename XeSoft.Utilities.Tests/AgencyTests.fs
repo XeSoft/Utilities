@@ -33,20 +33,32 @@ type AgencyTests () =
 
     [<TestMethod>]
     member __.``Agency - when processing many messages new agents spawned and messages queued`` () =
-        let dist = Agency.create runFn failFn hashFn
         let agentsMax = 10
         let max = 1000
-        let resultsAsync = [| for i in 0 .. max - 1 do yield Agency.send { Id = i % agentsMax; Result = i } dist |]
-        let messageCount = Agency.messageCount dist
-        printfn "Distributor message queue count %i" messageCount
-        Assert.IsTrue(1 <= messageCount && messageCount <= max)
-        let agentCount = Agency.agentCount dist
-        printfn "Distributor agent count %i" agentCount
-        Assert.AreEqual(agentsMax, agentCount)
+        let agency = Agency.create runFn failFn hashFn
+        let stats = Agency.stats agency
+        printfn "Agency stats after creation: %A" stats
+        Assert.AreEqual(0, stats.AgentCount)
+        Assert.AreEqual(0, stats.QueueSize)
+        Assert.AreEqual(0, stats.PeakQueueSize)
+        Assert.AreEqual(0L, stats.Processed)
+        let resultsAsync = [| for i in 0 .. max - 1 do yield Agency.send { Id = i % agentsMax; Result = i } agency |]
+        Async.Sleep 10 |> Async.RunSynchronously
+        let stats = Agency.stats agency
+        printfn "Agency stats after sending: %A" stats
+        Assert.AreEqual(agentsMax, stats.AgentCount)
+        Assert.IsTrue(1 <= stats.QueueSize && stats.QueueSize <= max)
+        Assert.IsTrue(1 <= stats.PeakQueueSize && stats.PeakQueueSize <= max)
+        Assert.IsTrue(0L <= stats.Processed && stats.Processed <= int64 max)
+        Assert.AreEqual(int64 max, int64 stats.QueueSize + stats.Processed)
         resultsAsync
         |> Async.Parallel
         |> Async.RunSynchronously
         |> Array.iteri (fun i x -> Assert.AreEqual(Some i, x))
-        Agency.stop dist |> Async.RunSynchronously
-        Assert.AreEqual(0, Agency.messageCount dist)
-        Assert.AreEqual(0, Agency.agentCount dist)
+        Async.Sleep 10 |> Async.RunSynchronously
+        let stats = Agency.stats agency
+        printfn "Agency stats after processing: %A" stats
+        Assert.AreEqual(0, stats.AgentCount)
+        Assert.AreEqual(0, stats.QueueSize)
+        Assert.IsTrue(1 <= stats.PeakQueueSize && stats.PeakQueueSize <= max)
+        Assert.AreEqual(int64 max, stats.Processed)
