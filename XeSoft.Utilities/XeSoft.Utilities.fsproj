@@ -47,7 +47,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Agent.fs" />
-    <Compile Include="AgentDistributor.fs" />
+    <Compile Include="Agency.fs" />
     <Compile Include="CircularDictionary.fs" />
     <Compile Include="CircularMap.fs" />
     <Compile Include="Ratio.fs" />

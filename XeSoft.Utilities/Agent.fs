@@ -16,15 +16,38 @@ type AgentStatistics = {
     Processed: int64;
 }
 
-[<Sealed>]
-type private AgentStats =
-    val mutable QueueSize : int;
-    val mutable PeakQueueSize : int;
-    val mutable Processed : int64;
-    new () =
-        { QueueSize = 0; PeakQueueSize = 0; Processed = 0L }
-    member me.ToStatistics () =
-        { AgentStatistics.QueueSize = me.QueueSize; PeakQueueSize = me.PeakQueueSize; Processed = me.Processed; }
+type private AgentStats = 
+    private {
+        mutable QueueSize : int;
+        mutable PeakQueueSize : int;
+        mutable Processed : int64;
+        Locker : obj;
+    }
+    with
+        static member Create () =
+            { QueueSize = 0; PeakQueueSize = 0; Processed = 0L; Locker = new obj (); }
+
+        member me.ToStatistics () =
+            lock me.Locker
+            <| fun () -> 
+                { AgentStatistics.QueueSize = me.QueueSize; PeakQueueSize = me.PeakQueueSize; Processed = me.Processed; }
+
+        member me.Received () =
+            async {
+                lock (me.Locker)
+                <| fun () ->
+                    me.QueueSize <- me.QueueSize + 1
+                    if me.QueueSize > me.PeakQueueSize then
+                        me.PeakQueueSize <- me.QueueSize
+            } |> Async.Start
+
+        member me.Completed () =
+            async {
+                lock (me.Locker)
+                <| fun () ->
+                    me.QueueSize <- me.QueueSize - 1
+                    me.Processed <- me.Processed + 1L
+            } |> Async.Start
 
 type Agent<'message, 'result> =
     private {
@@ -43,7 +66,7 @@ module Agent =
         let startAgent t f = MailboxProcessor.Start (f, cancellationToken = t)
         let canceller = new System.Threading.CancellationTokenSource ()
 
-        let stats = new AgentStats ()
+        let stats = AgentStats.Create ()
 
         let runTurn op =
             match op with
@@ -57,26 +80,20 @@ module Agent =
                     return Processed
                 }
 
-        let updateStats queueSize =
-            stats.QueueSize <- queueSize
-            if stats.QueueSize > stats.PeakQueueSize then
-                stats.PeakQueueSize <- stats.QueueSize
-            stats.Processed <- stats.Processed + 1L
-
         let mailbox =
             startAgent
                 <| canceller.Token
                 <| fun inbox -> // agent boilerplate
                     let rec loop () =
                         async {
-                            updateStats inbox.CurrentQueueLength
                             let! op = inbox.Receive ()
                             let! result = runTurn op
                             match result with
                             | Stopped -> return () // exit
-                            | Processed -> return! loop () // continue
+                            | Processed ->
+                                stats.Completed ()
+                                return! loop () // continue
                         }
-                    stats.Processed <- -1L
                     loop () // start the message processing loop
 
         { Mailbox = mailbox; Canceller = canceller; Stats = stats;}
@@ -84,6 +101,7 @@ module Agent =
     /// Submit a message for an agent to process.
     /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (a:Agent<'message,'result>) =
+        a.Stats.Received ()
         a.Mailbox.PostAndAsyncReply (fun channel -> Process (m, channel.Reply))
 
     /// Stop an agent after all remaining messages have been processed.

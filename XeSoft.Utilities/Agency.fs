@@ -2,7 +2,7 @@
 
 open System.Threading
 
-type private DistributorOp<'key, 'message, 'result when 'key : equality> =
+type private AgencyOp<'key, 'message, 'result when 'key : equality> =
 | Distribute of 'key * 'message * reply:('result -> unit)
 | CompleteRun of 'key
 | GetAgentCount of reply:(int -> unit)
@@ -13,21 +13,21 @@ type private AgentCounter<'message, 'result> = {
     Agent: Agent<'message, 'result>;
 }
 
-type private DistributorResult<'result> =
+type private AgencyOpResult<'result> =
 | QueryAnswered
 | MessageDistributed
 | DistributionFailed
 | AgentStatsUpdated
 | ShutdownCompleted
 
-type AgentDistributor<'key, 'message, 'result when 'key : equality> =
+type Agency<'key, 'message, 'result when 'key : equality> =
     private {
         Canceller: CancellationTokenSource;
-        Mailbox: MailboxProcessor<DistributorOp<'key, 'message, Async<'result>>>;
+        Mailbox: MailboxProcessor<AgencyOp<'key, 'message, Async<'result>>>;
         HashFn: 'message -> 'key;
     }
 
-module AgentDistributor =
+module Agency =
     
     /// Create an agent distributor to process messages.
     /// Messages are first run through the hashFn to decide which agent will process them.
@@ -125,7 +125,7 @@ module AgentDistributor =
 
     /// Submit a message to a distributor for processing.
     /// Returns an async that will complete with the result when the message is processed.
-    let send (m:'message) (d:AgentDistributor<'key, 'message, 'result>) =
+    let send (m:'message) (d:Agency<'key, 'message, 'result>) =
         let key = d.HashFn m
         let distributionResultAsync = d.Mailbox.PostAndAsyncReply (fun channel -> Distribute (key, m, channel.Reply))
         async {
@@ -137,18 +137,18 @@ module AgentDistributor =
 
     /// Stop a distributor after all remaining messages have been processed.
     /// Returns an async that will complete when all remaining messages have been processed.
-    let stop (d:AgentDistributor<'key, 'message, 'result>) =
+    let stop (d:Agency<'key, 'message, 'result>) =
         d.Mailbox.PostAndAsyncReply (fun channel -> Shutdown channel.Reply)
 
     /// Stop a distributor immediately.
     /// Any messages remaining in queue will not be processed.
-    let stopNow (d:AgentDistributor<'key, 'message, 'result>) =
+    let stopNow (d:Agency<'key, 'message, 'result>) =
         d.Canceller.Cancel ()
         d.Mailbox.Post (Shutdown ignore)
         // must post message to trigger the cancel check in case queue is empty
 
     /// Get the count of agents that the distributor currently has running.
-    let agentCount (d:AgentDistributor<'key, 'message, 'result>) =
+    let agentCount (d:Agency<'key, 'message, 'result>) =
         if d.Canceller.IsCancellationRequested then 0
         else
             d.Mailbox.PostAndAsyncReply (fun channel -> GetAgentCount channel.Reply)
@@ -156,18 +156,18 @@ module AgentDistributor =
 
     /// Returns the count of queued messages in the distributor.
     /// It does not include the count of messages distributed to agents.
-    let messageCount (d:AgentDistributor<'key, 'message, 'result>) =
+    let messageCount (d:Agency<'key, 'message, 'result>) =
         d.Mailbox.CurrentQueueLength
 
 // convenience methods
-type AgentDistributor<'key, 'message, 'result when 'key : equality> with
+type Agency<'key, 'message, 'result when 'key : equality> with
     /// Submit a message for processing.
     /// Returns an async that will complete with the result when the message is processed.
-    member me.Send m = AgentDistributor.send m me
+    member me.Send m = Agency.send m me
     /// Stop the distributor after all remaining messages have been processed.
     /// Returns an async that will complete when all remaining messages have been processed.
-    member me.Stop () = AgentDistributor.stop me
+    member me.Stop () = Agency.stop me
     /// Stop the distributor immediately.
     /// Any messages remaining in queue will not be processed.
-    member me.StopNow () = AgentDistributor.stopNow me
+    member me.StopNow () = Agency.stopNow me
     

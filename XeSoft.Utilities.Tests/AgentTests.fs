@@ -35,10 +35,16 @@ type AgentTests () =
         let agent = Agent.create runFn failFn
         let stats = Agent.stats agent
         printfn "Agent stats after creation: %A" stats
+        Assert.AreEqual(0, stats.QueueSize)
+        Assert.AreEqual(0, stats.PeakQueueSize)
+        Assert.AreEqual(0L, stats.Processed)
         let resultsAsync = [|  for i in 0 .. max - 1 do yield Agent.send { Result = i } agent |]
         let stats = Agent.stats agent
         printfn "Agent stats after sending: %A" stats
         Assert.IsTrue(1 <= stats.QueueSize && stats.QueueSize <= max)
+        Assert.IsTrue(1 <= stats.PeakQueueSize && stats.PeakQueueSize <= max)
+        Assert.IsTrue(0L <= stats.Processed && stats.Processed <= int64 max)
+        Assert.AreEqual(int64 max, int64 stats.QueueSize + stats.Processed)
         resultsAsync
         |> Async.Parallel
         |> Async.RunSynchronously
