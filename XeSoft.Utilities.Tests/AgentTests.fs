@@ -31,14 +31,20 @@ type AgentTests () =
 
     [<TestMethod>]
     member __.``Agent - when processing many messages some get queued`` () =
-        let agent = Agent.create runFn failFn
         let max = 1000
+        let agent = Agent.create runFn failFn
+        let stats = Agent.stats agent
+        printfn "Agent stats after creation: %A" stats
         let resultsAsync = [|  for i in 0 .. max - 1 do yield Agent.send { Result = i } agent |]
-        let count = Agent.messageCount agent
-        printfn "Agent queue count: %i" count
-        Assert.IsTrue(1 <= count && count <= max)
+        let stats = Agent.stats agent
+        printfn "Agent stats after sending: %A" stats
+        Assert.IsTrue(1 <= stats.QueueSize && stats.QueueSize <= max)
         resultsAsync
         |> Async.Parallel
         |> Async.RunSynchronously
         |> Array.iteri (fun i x -> Assert.AreEqual(Some i, x))
-        Assert.AreEqual(0, Agent.messageCount agent)
+        let stats = Agent.stats agent
+        printfn "Agent stats after processing: %A" stats
+        Assert.IsTrue(1 <= stats.PeakQueueSize && stats.PeakQueueSize <= max)
+        Assert.AreEqual(0, stats.QueueSize)
+        Assert.AreEqual(int64 max, stats.Processed)

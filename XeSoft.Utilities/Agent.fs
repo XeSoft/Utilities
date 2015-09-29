@@ -10,10 +10,27 @@ type private AgentOpResult =
 | Processed
 | Stopped
 
+type AgentStatistics = {
+    QueueSize: int;
+    PeakQueueSize: int;
+    Processed: int64;
+}
+
+[<Sealed>]
+type private AgentStats =
+    val mutable QueueSize : int;
+    val mutable PeakQueueSize : int;
+    val mutable Processed : int64;
+    new () =
+        { QueueSize = 0; PeakQueueSize = 0; Processed = 0L }
+    member me.ToStatistics () =
+        { AgentStatistics.QueueSize = me.QueueSize; PeakQueueSize = me.PeakQueueSize; Processed = me.Processed; }
+
 type Agent<'message, 'result> =
     private {
         Mailbox: MailboxProcessor<AgentOp<'message,'result>>;
         Canceller: CancellationTokenSource;
+        Stats: AgentStats;
     }
 
 module Agent =
@@ -25,6 +42,8 @@ module Agent =
 
         let startAgent t f = MailboxProcessor.Start (f, cancellationToken = t)
         let canceller = new System.Threading.CancellationTokenSource ()
+
+        let stats = new AgentStats ()
 
         let runTurn op =
             match op with
@@ -38,21 +57,29 @@ module Agent =
                     return Processed
                 }
 
+        let updateStats queueSize =
+            stats.QueueSize <- queueSize
+            if stats.QueueSize > stats.PeakQueueSize then
+                stats.PeakQueueSize <- stats.QueueSize
+            stats.Processed <- stats.Processed + 1L
+
         let mailbox =
             startAgent
                 <| canceller.Token
                 <| fun inbox -> // agent boilerplate
                     let rec loop () =
                         async {
+                            updateStats inbox.CurrentQueueLength
                             let! op = inbox.Receive ()
                             let! result = runTurn op
                             match result with
                             | Stopped -> return () // exit
                             | Processed -> return! loop () // continue
                         }
+                    stats.Processed <- -1L
                     loop () // start the message processing loop
 
-        { Mailbox = mailbox; Canceller = canceller;}
+        { Mailbox = mailbox; Canceller = canceller; Stats = stats;}
 
     /// Submit a message for an agent to process.
     /// Returns an async that will complete with the result when the message is processed.
@@ -71,9 +98,9 @@ module Agent =
         a.Mailbox.Post (Stop ignore)
         // must post the stop message to trigger the cancel check in case queue is empty
 
-    /// Get the count of messages waiting in queue on the agent.
-    let messageCount (a:Agent<'message, 'result>) =
-        a.Mailbox.CurrentQueueLength
+    /// Get the agent statistics.
+    let stats (a:Agent<'message, 'result>) =
+        a.Stats.ToStatistics ()
 
 // convenience methods
 type Agent<'message, 'result> with
@@ -86,3 +113,5 @@ type Agent<'message, 'result> with
     /// Stop the agent immediately.
     /// Any messages remaining in queue will not be processed.
     member me.StopNow () = Agent.stopNow me
+    /// Get the agent statistics.
+    member me.GetStats () = Agent.stats me
