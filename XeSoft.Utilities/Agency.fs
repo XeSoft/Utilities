@@ -216,6 +216,7 @@ module Agency =
     /// Stop a distributor immediately.
     /// Any messages remaining in queue will not be processed.
     let stopNow (d:Agency<'key, 'message, 'result>) =
+        d.Stats.Post StatsStopped
         d.Canceller.Cancel ()
         d.Mailbox.Post (Shutdown ignore)
         // must post message to trigger the cancel check in case queue is empty
