@@ -107,10 +107,10 @@ module Agent =
                         let! result = runTurn op
                         match result with
                         | Stopped ->
-                            statsInbox.Post (StatsStopped)
+                            statsInbox.Post StatsStopped
                             return () // exit
                         | Processed ->
-                            statsInbox.Post(MessageProcessed)
+                            statsInbox.Post MessageProcessed
                             return! loop () // continue
                     }
                 loop () // start the message processing loop
@@ -120,7 +120,7 @@ module Agent =
     /// Submit a message for an agent to process.
     /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (a:Agent<'message,'result>) =
-        a.Stats.Post (MessageReceived)
+        a.Stats.Post MessageReceived
         a.Mailbox.PostAndAsyncReply (fun channel -> Process (m, channel.Reply))
 
     /// Stop an agent after all remaining messages have been processed.
@@ -131,7 +131,7 @@ module Agent =
     /// Stop an agent immediately.
     /// Any messages remaining in queue will not be processed.
     let stopNow (a:Agent<'message, 'result>) =
-        a.Stats.Post (StatsStopped)
+        a.Stats.Post StatsStopped
         a.Canceller.Cancel ()
         a.Mailbox.Post (Stop ignore)
         // must post the stop message to trigger the cancel check in case queue is empty
