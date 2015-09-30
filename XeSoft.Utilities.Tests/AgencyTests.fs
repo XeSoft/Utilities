@@ -39,14 +39,15 @@ type AgencyTests () =
         let stats = Agency.stats agency
         printfn "Agency stats after creation: %A" stats
         Assert.AreEqual(0, stats.AgentCount)
+        Assert.AreEqual(0, stats.PeakAgentCount)
         Assert.AreEqual(0, stats.QueueSize)
         Assert.AreEqual(0, stats.PeakQueueSize)
         Assert.AreEqual(0L, stats.Processed)
         let resultsAsync = [| for i in 0 .. max - 1 do yield Agency.send { Id = i % agentsMax; Result = i } agency |]
-        Async.Sleep 10 |> Async.RunSynchronously
         let stats = Agency.stats agency
         printfn "Agency stats after sending: %A" stats
         Assert.AreEqual(agentsMax, stats.AgentCount)
+        Assert.AreEqual(agentsMax, stats.PeakAgentCount)
         Assert.IsTrue(1 <= stats.QueueSize && stats.QueueSize <= max)
         Assert.IsTrue(1 <= stats.PeakQueueSize && stats.PeakQueueSize <= max)
         Assert.IsTrue(0L <= stats.Processed && stats.Processed <= int64 max)
@@ -55,10 +56,11 @@ type AgencyTests () =
         |> Async.Parallel
         |> Async.RunSynchronously
         |> Array.iteri (fun i x -> Assert.AreEqual(Some i, x))
-        Async.Sleep 10 |> Async.RunSynchronously
+        Agency.stop agency |> Async.RunSynchronously
         let stats = Agency.stats agency
         printfn "Agency stats after processing: %A" stats
         Assert.AreEqual(0, stats.AgentCount)
+        Assert.AreEqual(agentsMax, stats.PeakAgentCount)
         Assert.AreEqual(0, stats.QueueSize)
         Assert.IsTrue(1 <= stats.PeakQueueSize && stats.PeakQueueSize <= max)
         Assert.AreEqual(int64 max, stats.Processed)

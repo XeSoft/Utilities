@@ -5,7 +5,6 @@ open System.Threading
 type private AgencyOp<'key, 'message, 'result when 'key : equality> =
 | Distribute of 'key * 'message * reply:('result -> unit)
 | CompleteRun of 'key
-| GetAgentCount of reply:(int -> unit)
 | Shutdown of signalComplete:(unit -> unit)
 
 type private AgentCounter<'message, 'result> = {
@@ -14,7 +13,6 @@ type private AgentCounter<'message, 'result> = {
 }
 
 type private AgencyOpResult<'result> =
-| QueryAnswered
 | MessageDistributed
 | DistributionFailed
 | AgentStatsUpdated
@@ -22,65 +20,42 @@ type private AgencyOpResult<'result> =
 
 type AgencyStatistics = {
     AgentCount: int;
+    PeakAgentCount: int;
     QueueSize: int;
     PeakQueueSize: int;
     Processed: int64;
 }
 
+type private AgencyStatsEvent =
+| StatsQueried of deliver:(AgencyStatistics -> unit)
+| MessageReceived
+| MessageProcessed
+| AgentCommissioned
+| AgentDecommissioned
+| StatsStopped
+
 type private AgencyStats = 
     private {
         mutable AgentCount : int;
+        mutable PeakAgentCount: int;
         mutable QueueSize : int;
         mutable PeakQueueSize : int;
         mutable Processed : int64;
-        Locker : obj;
     }
     with
         static member Create () =
-            { AgentCount = 0; QueueSize = 0; PeakQueueSize = 0; Processed = 0L; Locker = new obj (); }
+            { AgentCount = 0; PeakAgentCount = 0; QueueSize = 0; PeakQueueSize = 0; Processed = 0L; }
 
-        member me.ToStatistics () =
-            lock me.Locker
-            <| fun () -> 
-                { AgencyStatistics.AgentCount = me.AgentCount; QueueSize = me.QueueSize; PeakQueueSize = me.PeakQueueSize; Processed = me.Processed; }
-
-        member me.Commissioned () =
-            async {
-                lock (me.Locker)
-                <| fun () ->
-                    me.AgentCount <- me.AgentCount + 1
-            } |> Async.Start
-
-        member me.Decommissioned () =
-            async {
-                lock (me.Locker)
-                <| fun () ->
-                    me.AgentCount <- me.AgentCount - 1
-            } |> Async.Start
-
-        member me.Received () =
-            async {
-                lock (me.Locker)
-                <| fun () ->
-                    me.QueueSize <- me.QueueSize + 1
-                    if me.QueueSize > me.PeakQueueSize then
-                        me.PeakQueueSize <- me.QueueSize
-            } |> Async.Start
-
-        member me.Completed () =
-            async {
-                lock (me.Locker)
-                <| fun () ->
-                    me.QueueSize <- me.QueueSize - 1
-                    me.Processed <- me.Processed + 1L
-            } |> Async.Start
+        member me.ToReadOnly () =
+            { AgencyStatistics.AgentCount = me.AgentCount; PeakAgentCount = me.PeakAgentCount; QueueSize = me.QueueSize; PeakQueueSize = me.PeakQueueSize; Processed = me.Processed; }
 
 type Agency<'key, 'message, 'result when 'key : equality> =
     private {
         Canceller: CancellationTokenSource;
         Mailbox: MailboxProcessor<AgencyOp<'key, 'message, Async<'result>>>;
         HashFn: 'message -> 'key;
-        Stats: AgencyStats;
+        Stats: MailboxProcessor<AgencyStatsEvent>;
+        FinalStats: AgencyStatistics ref;
     }
 
 module Agency =
@@ -99,6 +74,43 @@ module Agency =
         let agentsByKey = new System.Collections.Generic.Dictionary<'key, AgentCounter<_,_>> ()
 
         let stats = AgencyStats.Create ()
+        let finalStats = ref (stats.ToReadOnly())
+
+        let updateStats op =
+            match op with
+            | StatsQueried deliver ->
+                deliver(stats.ToReadOnly())
+            | StatsStopped ->
+                finalStats := stats.ToReadOnly()
+            | MessageReceived ->
+                stats.QueueSize <- stats.QueueSize + 1
+                if stats.QueueSize > stats.PeakQueueSize then
+                    stats.PeakQueueSize <- stats.QueueSize
+            | MessageProcessed ->
+                stats.QueueSize <- stats.QueueSize - 1
+                stats.Processed <- stats.Processed + 1L
+            | AgentCommissioned ->
+                stats.AgentCount <- stats.AgentCount + 1
+                if stats.AgentCount > stats.PeakAgentCount then
+                    stats.PeakAgentCount <- stats.AgentCount
+            | AgentDecommissioned ->
+                stats.AgentCount <- stats.AgentCount - 1
+            match op with
+            | StatsStopped -> false
+            | _ -> true
+
+        let statsInbox =
+            MailboxProcessor.Start
+            <| fun inbox ->
+                let rec loop () =
+                    async {
+                        let! op = inbox.Receive ()
+                        let keepGoing = updateStats op
+                        match keepGoing with
+                        | false -> return ()
+                        | true -> return! loop ()
+                    }
+                loop ()
 
         let getAgentCounter key =
             match agentsByKey.TryGetValue key with
@@ -107,7 +119,7 @@ module Agency =
                 let agent = Agent.create processFn failFn
                 let agentCounter = { MessageCount = 0; Agent = agent }
                 agentsByKey.Add (key, agentCounter)
-                stats.Commissioned ()
+                statsInbox.Post AgentCommissioned
                 agentCounter
 
         let getAgent key = (getAgentCounter key).Agent
@@ -119,11 +131,12 @@ module Agency =
         let oneFinished key =
             let counter = getAgentCounter key
             counter.MessageCount <- counter.MessageCount - 1
+            statsInbox.Post MessageProcessed
             // remove if no more messages
             if counter.MessageCount = 0 then
                 Agent.stopNow counter.Agent
                 agentsByKey.Remove key |> ignore
-                stats.Decommissioned ()
+                statsInbox.Post AgentDecommissioned
 
         let runTurn op =
             match op with
@@ -133,6 +146,7 @@ module Agency =
                 |> Async.Parallel
                 |> Async.Ignore
                 |> Async.RunSynchronously
+                statsInbox.Post StatsStopped
                 signalComplete ()
                 canceller.Cancel () // call cancel to signal stopped
                 ShutdownCompleted
@@ -151,9 +165,6 @@ module Agency =
             | CompleteRun key ->
                 oneFinished key
                 AgentStatsUpdated
-            | GetAgentCount reply ->
-                reply agentsByKey.Count
-                QueryAnswered
 
         let stopAllAgentsNow () =
             agentsByKey.Values
@@ -170,7 +181,6 @@ module Agency =
                             let! op = inbox.Receive ()
                             match runTurn op with
                             | ShutdownCompleted -> return () // exit
-                            | QueryAnswered
                             | MessageDistributed
                             | DistributionFailed
                             | AgentStatsUpdated -> return! loop () // continue
@@ -181,19 +191,19 @@ module Agency =
             Canceller = canceller;
             Mailbox = mailbox;
             HashFn = hashFn;
-            Stats = stats;
+            Stats = statsInbox;
+            FinalStats = finalStats;
         }
 
     /// Submit a message to a distributor for processing.
     /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (d:Agency<'key, 'message, 'result>) =
         let key = d.HashFn m
-        d.Stats.Received ()
+        d.Stats.Post MessageReceived
         let distributionResultAsync = d.Mailbox.PostAndAsyncReply (fun channel -> Distribute (key, m, channel.Reply))
         async {
             let! distributionResult = distributionResultAsync // distribution complete
             let! runResult = distributionResult // agent result
-            d.Stats.Completed ()
             d.Mailbox.Post (CompleteRun key) // notify distributor of completed message
             return runResult // return result to caller
         }
@@ -210,16 +220,12 @@ module Agency =
         d.Mailbox.Post (Shutdown ignore)
         // must post message to trigger the cancel check in case queue is empty
 
-    /// Get the count of agents that the distributor currently has running.
-    let agentCount (d:Agency<'key, 'message, 'result>) =
-        if d.Canceller.IsCancellationRequested then 0
-        else
-            d.Mailbox.PostAndAsyncReply (fun channel -> GetAgentCount channel.Reply)
-            |> Async.RunSynchronously
-
     /// Returns the stats for the distributor.
     let stats (d:Agency<'key, 'message, 'result>) =
-        d.Stats.ToStatistics ()
+        if d.Canceller.IsCancellationRequested then
+            !d.FinalStats
+        else
+            d.Stats.PostAndReply (fun channel -> StatsQueried channel.Reply)
 
 // convenience methods
 type Agency<'key, 'message, 'result when 'key : equality> with

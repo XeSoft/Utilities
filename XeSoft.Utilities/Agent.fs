@@ -16,44 +16,30 @@ type AgentStatistics = {
     Processed: int64;
 }
 
+type private AgentStatsEvent =
+| StatsQueried of deliver:(AgentStatistics -> unit)
+| MessageReceived
+| MessageProcessed
+| StatsStopped
+
 type private AgentStats = 
-    private {
+    {
         mutable QueueSize : int;
         mutable PeakQueueSize : int;
         mutable Processed : int64;
-        Locker : obj;
     }
     with
         static member Create () =
-            { QueueSize = 0; PeakQueueSize = 0; Processed = 0L; Locker = new obj (); }
-
-        member me.ToStatistics () =
-            lock me.Locker
-            <| fun () -> 
-                { AgentStatistics.QueueSize = me.QueueSize; PeakQueueSize = me.PeakQueueSize; Processed = me.Processed; }
-
-        member me.Received () =
-            async {
-                lock (me.Locker)
-                <| fun () ->
-                    me.QueueSize <- me.QueueSize + 1
-                    if me.QueueSize > me.PeakQueueSize then
-                        me.PeakQueueSize <- me.QueueSize
-            } |> Async.Start
-
-        member me.Completed () =
-            async {
-                lock (me.Locker)
-                <| fun () ->
-                    me.QueueSize <- me.QueueSize - 1
-                    me.Processed <- me.Processed + 1L
-            } |> Async.Start
+            { QueueSize = 0; PeakQueueSize = 0; Processed = 0L; }
+        member x.ToReadOnly () =
+            { AgentStatistics.QueueSize = x.QueueSize; PeakQueueSize = x.PeakQueueSize; Processed = x.Processed; }
 
 type Agent<'message, 'result> =
     private {
         Mailbox: MailboxProcessor<AgentOp<'message,'result>>;
         Canceller: CancellationTokenSource;
-        Stats: AgentStats;
+        Stats: MailboxProcessor<AgentStatsEvent>;
+        FinalStats: AgentStatistics ref; 
     }
 
 module Agent =
@@ -67,6 +53,7 @@ module Agent =
         let canceller = new System.Threading.CancellationTokenSource ()
 
         let stats = AgentStats.Create ()
+        let finalStats = ref (stats.ToReadOnly())
 
         let runTurn op =
             match op with
@@ -80,28 +67,60 @@ module Agent =
                     return Processed
                 }
 
+        let updateStats op =
+            match op with
+            | StatsStopped ->
+                finalStats := stats.ToReadOnly()
+            | StatsQueried deliver -> 
+                deliver (stats.ToReadOnly())
+            | MessageReceived -> 
+                stats.QueueSize <- stats.QueueSize + 1
+                if stats.QueueSize > stats.PeakQueueSize then
+                    stats.PeakQueueSize <- stats.QueueSize
+            | MessageProcessed ->
+                stats.QueueSize <- stats.QueueSize - 1
+                stats.Processed <- stats.Processed + 1L
+            match op with
+            | StatsStopped -> false
+            | _ -> true
+
+        let statsInbox =
+            MailboxProcessor.Start
+            <| fun inbox ->
+                let rec loop () =
+                    async {
+                        let! op = inbox.Receive ()
+                        let keepGoing = updateStats op
+                        match keepGoing with
+                        | false -> return ()
+                        | true -> return! loop ()
+                    }
+                loop ()
+
         let mailbox =
             startAgent
-                <| canceller.Token
-                <| fun inbox -> // agent boilerplate
-                    let rec loop () =
-                        async {
-                            let! op = inbox.Receive ()
-                            let! result = runTurn op
-                            match result with
-                            | Stopped -> return () // exit
-                            | Processed ->
-                                stats.Completed ()
-                                return! loop () // continue
-                        }
-                    loop () // start the message processing loop
+            <| canceller.Token
+            <| fun inbox -> // agent boilerplate
+                let rec loop () =
+                    async {
+                        let! op = inbox.Receive ()
+                        let! result = runTurn op
+                        match result with
+                        | Stopped ->
+                            statsInbox.Post (StatsStopped)
+                            return () // exit
+                        | Processed ->
+                            statsInbox.Post(MessageProcessed)
+                            return! loop () // continue
+                    }
+                loop () // start the message processing loop
 
-        { Mailbox = mailbox; Canceller = canceller; Stats = stats;}
+        { Mailbox = mailbox; Canceller = canceller; Stats = statsInbox; FinalStats = finalStats;}
 
     /// Submit a message for an agent to process.
     /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (a:Agent<'message,'result>) =
-        a.Stats.Received ()
+        a.Stats.Post (MessageReceived)
         a.Mailbox.PostAndAsyncReply (fun channel -> Process (m, channel.Reply))
 
     /// Stop an agent after all remaining messages have been processed.
@@ -112,13 +131,17 @@ module Agent =
     /// Stop an agent immediately.
     /// Any messages remaining in queue will not be processed.
     let stopNow (a:Agent<'message, 'result>) =
+        a.Stats.Post (StatsStopped)
         a.Canceller.Cancel ()
         a.Mailbox.Post (Stop ignore)
         // must post the stop message to trigger the cancel check in case queue is empty
 
     /// Get the agent statistics.
     let stats (a:Agent<'message, 'result>) =
-        a.Stats.ToStatistics ()
+        if a.Canceller.IsCancellationRequested then
+            !a.FinalStats
+        else
+            a.Stats.PostAndReply (fun channel -> StatsQueried channel.Reply)
 
 // convenience methods
 type Agent<'message, 'result> with
