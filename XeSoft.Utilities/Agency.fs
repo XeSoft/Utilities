@@ -64,7 +64,7 @@ module Agency =
     /// Messages are first run through the hashFn to decide which agent will process them.
     /// Each message to the same agent (hash value) will be processed in order.
     /// processFn will be run on each submitted message in order.
-    /// failFn will be called if processFn thrown an exception.
+    /// failFn will be called if processFn throws an exception.
     /// hashFn will be used do decide which agent should process the message.
     let create (processFn:'message -> Async<'result>) (failFn: exn -> 'result) (hashFn: 'message -> 'key) =
 
