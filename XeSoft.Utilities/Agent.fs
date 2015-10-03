@@ -6,6 +6,7 @@ type private AgentOp<'message, 'result> =
 | Stop of signalComplete:(unit -> unit)
 | Process of message:'message * reply:('result -> unit)
 
+// these are mainly events which affect memory profile or component status
 type AgentEvent =
 | AgentReceivedMessage
 | AgentProcessedMessage

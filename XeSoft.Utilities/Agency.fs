@@ -12,7 +12,7 @@ type private AgentTracker<'message, 'result> = {
     Agent: Agent<'message, 'result>;
 }
 
-// these are mainly events which affect memory profile or component capability
+// these are mainly events which affect memory profile or component status
 type AgencyEvent =
 | AgencyReceivedMessage
 | AgencyDistributedMessage
