@@ -38,7 +38,7 @@ module Agency =
     /// failFn will be called if processFn throws an exception.
     /// hashFn will be used do decide which agent should process the message.
     /// statsFn will be called whenever an agency event occurs
-    let createWithStats (processFn:'message -> 'result) (failFn: exn -> 'result) (hashFn: 'message -> 'key) (statsFn:AgencyEvent -> unit) =
+    let createWithStats (processFn:'message -> Async<'result>) (failFn: exn -> 'result) (hashFn: 'message -> 'key) (statsFn:AgencyEvent -> unit) =
 
         // forward composition tee
         let (>|>) f g x = g x; f x
@@ -136,7 +136,7 @@ module Agency =
     /// processFn will be run on each submitted message in order.
     /// failFn will be called if processFn throws an exception.
     /// hashFn will be used do decide which agent should process the message.
-    let create (processFn:'message -> 'result) (failFn: exn -> 'result) (hashFn: 'message -> 'key) =
+    let create (processFn:'message -> Async<'result>) (failFn: exn -> 'result) (hashFn: 'message -> 'key) =
         createWithStats processFn failFn hashFn ignore
 
     /// Submit a message to a distributor for processing.

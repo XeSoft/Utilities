@@ -25,7 +25,7 @@ module Agent =
     /// The processFn is performed on each submitted message in order.
     /// The failFn is called when the processFn throws an exception.
     /// The statsFn is called when events occur in the agent
-    let createWithStats (processFn:'message -> 'result) (failFn:exn -> 'result) (statsFn:AgentEvent -> unit) =
+    let createWithStats (processFn:'message -> Async<'result>) (failFn:exn -> 'result) (statsFn:AgentEvent -> unit) =
 
         // forward composition tee
         let (>|>) f g x = g x; f x
@@ -33,22 +33,23 @@ module Agent =
         let startAgent t f = MailboxProcessor.Start (f, cancellationToken = t)
         let canceller = new System.Threading.CancellationTokenSource ()
 
-        let run op =
+        let runTurn op =
             match op with
             | Stop signalComplete ->
                 statsFn AgentStopped
                 signalComplete ()
+                async { return false }
             | Process (message, reply) ->
-                let result = try processFn message with ex -> failFn ex
-                reply result
-                statsFn AgentProcessedMessage
-
-        let processResult op =
-            match op with
-            | Stop _ -> false
-            | _ -> true
-
-        let runTurn = processResult >|> run
+                async {
+                    let! result =
+                        async {
+                            try return! processFn message
+                            with ex -> return failFn ex
+                        }
+                    reply result
+                    statsFn AgentProcessedMessage
+                    return true
+                }
 
         let mailbox =
             startAgent
@@ -57,7 +58,8 @@ module Agent =
                 let rec loop () =
                     async {
                         let! op = inbox.Receive ()
-                        match runTurn op with
+                        let! doContinue = runTurn op
+                        match doContinue with
                         | false -> return () // exit
                         | true -> return! loop () // continue
                     }
@@ -68,7 +70,7 @@ module Agent =
     /// Create an agent to process messages with the provided function.
     /// The processFn is performed on each submitted message in order.
     /// The failFn is called when the processFn throws an exception.
-    let create (processFn:'message -> 'result) (failFn:exn -> 'result) =
+    let create (processFn:'message -> Async<'result>) (failFn:exn -> 'result) =
         createWithStats processFn failFn ignore
 
     /// Submit a message for an agent to process.

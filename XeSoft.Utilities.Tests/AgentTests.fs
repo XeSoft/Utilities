@@ -10,7 +10,7 @@ type private AgentTestMessage = {
 [<TestClass>]
 type AgentTests () =
 
-    let runFn m = Some m.Result
+    let runFn m = async { return Some m.Result }
     let runBadFn m = failwith "asdf"; runFn m
     let failFn _ = None
 
