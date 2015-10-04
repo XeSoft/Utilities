@@ -64,7 +64,6 @@ module Agency =
             Agent.stopNow tracker.Agent
             trackersByKey.Remove key |> ignore
 
-
         let getTrackerFor key =
             trackersByKey.[key]
 
@@ -78,7 +77,6 @@ module Agency =
                 |> Async.RunSynchronously
                 statsFn AgencyStopped
                 signalComplete ()
-                canceller.Cancel () // call cancel to signal stopped
             | Distribute (key, message, reply) ->
                 let tracker =
                     if trackerExistsFor key
@@ -111,7 +109,7 @@ module Agency =
         let mailbox =
             startAgent
             <| canceller.Token
-            <| fun inbox -> // agent boilerplate
+            <| fun inbox ->
                 let rec loop () =
                     async {
                         use! holder = Async.OnCancel stopAllAgentsNow
@@ -120,7 +118,7 @@ module Agency =
                         | false -> return () // exit
                         | true -> return! loop () // continue
                     }
-                loop () // start the message processing loop
+                loop ()
 
         {
             Canceller = canceller;
@@ -146,8 +144,8 @@ module Agency =
         // send to mailbox before entering async section
         let distResultAsync = d.Mailbox.PostAndAsyncReply (fun channel -> Distribute (key, m, channel.Reply))
         async {
-            let! runResultAsync = distResultAsync // agent result
-            let! runResult = runResultAsync
+            let! runResultAsync = distResultAsync // distribution result
+            let! runResult = runResultAsync // agent result
             d.Mailbox.Post (CompleteRun key) // notify distributor of completed message
             return runResult // return result to caller
         }
