@@ -51,7 +51,7 @@ module Agent =
         let mailbox =
             startAgent
             <| canceller.Token
-            <| fun inbox -> // agent boilerplate
+            <| fun inbox ->
                 let rec loop () =
                     async {
                         let! op = inbox.Receive ()
@@ -60,7 +60,7 @@ module Agent =
                         | false -> return () // exit
                         | true -> return! loop () // continue
                     }
-                loop () // start the message processing loop
+                loop ()
 
         { Mailbox = mailbox; Canceller = canceller; StatsFn = statsFn;}
 
