@@ -27,9 +27,6 @@ module Agent =
     /// The statsFn is called when events occur in the agent
     let createWithStats (processFn:'message -> Async<'result>) (failFn:exn -> 'result) (statsFn:AgentEvent -> unit) =
 
-        // forward composition tee
-        let (>|>) f g x = g x; f x
-
         let startAgent t f = MailboxProcessor.Start (f, cancellationToken = t)
         let canceller = new System.Threading.CancellationTokenSource ()
 
