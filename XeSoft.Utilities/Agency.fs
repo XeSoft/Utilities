@@ -3,7 +3,7 @@
 open System.Threading
 
 type private AgencyOp<'key, 'message, 'result when 'key : equality> =
-| Distribute of 'key * 'message * reply:(Async<'result> -> unit)
+| Distribute of 'key * 'message * reply:('result -> unit)
 | CompleteRun of 'key
 | Shutdown of signalComplete:(unit -> unit)
 
@@ -67,7 +67,7 @@ module Agency =
         let getTrackerFor key =
             trackersByKey.[key]
 
-        let run op =
+        let run (mailbox:MailboxProcessor<_>) op =
             match op with
             | Shutdown signalComplete ->
                 trackersByKey.Values
@@ -84,9 +84,15 @@ module Agency =
                     else statsFn AgencyCommissionedAgent
                          commissionTrackerWith key
                 tracker.MessageCount <- tracker.MessageCount + 1
-                let result = Agent.send message tracker.Agent
-                reply result
+                // deliver message to agent
+                let resultAsync = Agent.send message tracker.Agent
                 statsFn AgencyDistributedMessage
+                // setup notification and delivery when agent completes work
+                async {
+                    let! result = resultAsync // get result
+                    mailbox.Post (CompleteRun key) // notify distributor of completed message
+                    reply result // deliver result
+                } |> Async.Start
             | CompleteRun key ->
                 let tracker = getTrackerFor key
                 tracker.MessageCount <- tracker.MessageCount - 1
@@ -100,8 +106,6 @@ module Agency =
             | Shutdown _ -> false
             | _ -> true
 
-        let runTurn = processRequest >|> run
-
         let stopAllAgentsNow () =
             trackersByKey.Values
             |> Seq.iter (fun tracker -> Agent.stopNow tracker.Agent)
@@ -110,6 +114,7 @@ module Agency =
             startAgent
             <| canceller.Token
             <| fun inbox ->
+                let runTurn  = processRequest >|> run inbox
                 let rec loop () =
                     async {
                         use! holder = Async.OnCancel stopAllAgentsNow
@@ -136,19 +141,18 @@ module Agency =
     let create (processFn:'message -> Async<'result>) (failFn: exn -> 'result) (hashFn: 'message -> 'key) =
         createWithStats processFn failFn hashFn ignore
 
-    /// Submit a message to a distributor for processing.
+    /// Send a message to a distributor for processing.
     /// Returns an async that will complete with the result when the message is processed.
     let send (m:'message) (d:Agency<'key, 'message, 'result>) =
         let key = d.HashFn m
         d.StatsFn AgencyReceivedMessage
-        // send to mailbox before entering async section
-        let distResultAsync = d.Mailbox.PostAndAsyncReply (fun channel -> Distribute (key, m, channel.Reply))
-        async {
-            let! runResultAsync = distResultAsync // distribution result
-            let! runResult = runResultAsync // agent result
-            d.Mailbox.Post (CompleteRun key) // notify distributor of completed message
-            return runResult // return result to caller
-        }
+        d.Mailbox.PostAndAsyncReply (fun channel -> Distribute (key, m, channel.Reply))
+
+    /// Queue a message to a distributor for processing.
+    let queue (m:'message) (d:Agency<'key, 'message, 'result>) =
+        let key = d.HashFn m
+        d.StatsFn AgencyReceivedMessage
+        d.Mailbox.Post (Distribute (key, m, ignore))
 
     /// Stop a distributor after all remaining messages have been processed.
     /// Returns an async that will complete when all remaining messages have been processed.
@@ -165,9 +169,11 @@ module Agency =
 
 // convenience methods
 type Agency<'key, 'message, 'result when 'key : equality> with
-    /// Submit a message for processing.
+    /// Send a message for processing.
     /// Returns an async that will complete with the result when the message is processed.
     member me.Send m = Agency.send m me
+    /// Queue a message for processing.
+    member me.Queue m = Agency.queue m me
     /// Stop the distributor after all remaining messages have been processed.
     /// Returns an async that will complete when all remaining messages have been processed.
     member me.Stop () = Agency.stop me

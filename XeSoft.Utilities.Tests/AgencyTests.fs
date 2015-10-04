@@ -27,7 +27,9 @@ type private StatsMessage =
 [<TestClass>]
 type AgencyTests () =
 
-    let runFn m = async { return Some m.Result }
+    let runFn m = async {
+        return Some m.Result
+    }
     let runBadFn m = failwith "asdf"; runFn m
     let hashFn m = m.Id
     let failFn _ = None
@@ -75,10 +77,12 @@ type AgencyTests () =
             } // start the message processing loop
 
     let getStats () =
-        statsInbox.PostAndReply (fun chan -> GetStats chan.Reply)
+        statsInbox.PostAndAsyncReply (fun chan -> GetStats chan.Reply)
+        |> Async.RunSynchronously
 
     let stopStats () =
-        statsInbox.PostAndReply (fun chan -> StopStats chan.Reply)
+        statsInbox.PostAndAsyncReply (fun chan -> StopStats chan.Reply)
+        |> Async.RunSynchronously
 
     let statsFn e = statsInbox.Post (StatsMessage e)
 
@@ -145,11 +149,11 @@ type AgencyTests () =
         printStats "processing" stats
         Assert.AreEqual(max, stats.Delivered)
         Assert.AreEqual(max, stats.Processed)
-        Assert.AreEqual(0, stats.Stopped)
+        Assert.IsTrue(between 0 agentsMax stats.Stopped)
         Assert.AreEqual(max, stats.Received)
         Assert.AreEqual(max, stats.Distributed)
         Assert.AreEqual(agentsMax, stats.Commissioned)
-        Assert.AreEqual(0, stats.Decommissioned)
+        Assert.IsTrue(between 0 agentsMax stats.Decommissioned)
         Assert.AreEqual(0, stats.Shutdown)
 
         Agency.stop agency |> Async.RunSynchronously
