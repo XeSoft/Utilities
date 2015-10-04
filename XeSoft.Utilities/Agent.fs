@@ -84,10 +84,10 @@ module Agent =
     /// Stop an agent immediately.
     /// Any messages remaining in queue will not be processed.
     let stopNow (a:Agent<'message, 'result>) =
+        a.StatsFn AgentStopped
         a.Canceller.Cancel ()
         // must post the stop message to trigger the cancel check in case queue is empty
         a.Mailbox.Post (Stop ignore)
-        a.StatsFn AgentStopped
 
 // convenience methods
 type Agent<'message, 'result> with
