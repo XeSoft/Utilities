@@ -106,22 +106,21 @@ module Agency =
 
         let stopAllAgentsNow () =
             trackersByKey.Values
-            |> Array.ofSeq
-            |> Array.iter (fun tracker -> Agent.stopNow tracker.Agent)
+            |> Seq.iter (fun tracker -> Agent.stopNow tracker.Agent)
 
         let mailbox =
             startAgent
-                <| canceller.Token
-                <| fun inbox -> // agent boilerplate
-                    let rec loop () =
-                        async {
-                            use! holder = Async.OnCancel stopAllAgentsNow
-                            let! op = inbox.Receive ()
-                            match runTurn op with
-                            | false -> return () // exit
-                            | true -> return! loop () // continue
-                        }
-                    loop () // start the message processing loop
+            <| canceller.Token
+            <| fun inbox -> // agent boilerplate
+                let rec loop () =
+                    async {
+                        use! holder = Async.OnCancel stopAllAgentsNow
+                        let! op = inbox.Receive ()
+                        match runTurn op with
+                        | false -> return () // exit
+                        | true -> return! loop () // continue
+                    }
+                loop () // start the message processing loop
 
         {
             Canceller = canceller;
