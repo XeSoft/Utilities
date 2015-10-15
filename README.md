@@ -10,7 +10,7 @@ in creating agents to process chunks of work.
 
 Functions to create, send messages to, and stop a mailbox processor.
 
-##### AgentDistributor
+##### Agency
 
 Itself an agent, it takes submitted messages and distributes them off to other agents 
 based on the provided hashing function. Agents are commissioned as needed (per hash value) 
