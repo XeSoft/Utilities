@@ -33,7 +33,7 @@ module Seq =
     /// Returns a new sequence which is shuffled.
     /// NOTE: does not work on infinite sequences as the sequence is enumerated
     let shuffleCrypto s =
-        let rngCsp = new System.Security.Cryptography.RNGCryptoServiceProvider ()
+        use rngCsp = new System.Security.Cryptography.RNGCryptoServiceProvider ()
         let rng = new RandomBuffer (rngCsp.GetBytes, (Seq.length s) - 1) // length - 1 iterations
         let getInt max =
             rng.GetRandomRatio ()
