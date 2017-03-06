@@ -30,7 +30,7 @@ type RandomBuffer (fillRandomBytes:byte array -> unit, ?numberOfBufferedItems:in
         fillRandomBytes buffer
         bufferPosition <- 0
 
-    /// Get a random Double between 0.0 and 1.0 inclusive
+    /// Get a random value between 0.0 and 1.0 inclusive
     member __.GetRandomRatio () =
         if bufferPosition >= buffer.Length then
             reset ()
